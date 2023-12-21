@@ -46,7 +46,38 @@ axiomAssociateProduct = Axiom {
       = Right (Op2 Product a (Op2 Product b c))
     f         (Op2 Product a (Op2 Product b c))
       = Right (Op2 Product (Op2 Product a b) c)
-    --f         (Op2 Fraction (Op2 Product a b) c)
-    --  = Right (Op2 Product a (Op2 Fraction b c))
+    f         (Op2 Fraction (Op2 Product a b) c)
+      = Right (Op2 Product a (Op2 Fraction b c))
     f t
       = Left t
+
+axiomSumConst = Axiom {
+  description = "Sum constants",
+  example = ("1+2", "3"),
+  implementation = f
+}
+  where
+    f (Op2 Sum (Const a) (Const b)) = Right (Const $ a + b)
+    f t = Left t
+
+axiomMultiplyConst = Axiom {
+  description = "Multiply constants",
+  example = ("2*3", "6"),
+  implementation = f
+}
+  where
+    f (Op2 Product (Const a) (Const b)) = Right (Const $ a * b)
+    f (Op2 Exponent (Const a) (Const b)) = Right (Const $ a ^ b)
+    f t = Left t
+
+axiomFactorialConst = Axiom {
+  description = "Factorial constants",
+  example = ("3!", "6"),
+  implementation = f
+}
+  where
+    f (Op1 Factorial (Const x)) = Right . Const $ factorial x
+    f t = Left t
+
+    factorial 0 = 1
+    factorial x = x * factorial (x-1)

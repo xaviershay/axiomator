@@ -49,44 +49,6 @@ axiomSubstitute pattern replacement = Axiom {
     f t = Right $ replaceVars (identifyVars pattern t) replacement
 
 
-
-axiomSumConst = Axiom {
-  description = "Sum constants",
-  example = ("1+2", "3"),
-  implementation = f
-}
-  where
-    f (Op2 Sum (Const a) (Const b)) = Right (Const $ a + b)
-    f t = Left t
-
-axiomMultiplyConst = Axiom {
-  description = "Multiply constants",
-  example = (
-    Op2 Product (Const 2) (Const 3),
-    (Const 6)
-  ),
-  implementation = f
-}
-  where
-    f (Op2 Product (Const a) (Const b)) = Right (Const $ a * b)
-    f (Op2 Exponent (Const a) (Const b)) = Right (Const $ a ^ b)
-    f t = Left t
-
-axiomFactorialConst = Axiom {
-  description = "Factorial constants",
-  example = (
-    Op1 Factorial (Const 3),
-    (Const 6)
-  ),
-  implementation = f
-}
-  where
-    f (Op1 Factorial (Const x)) = Right . Const $ factorial x
-    f t = Left t
-
-factorial 0 = 1
-factorial x = x * factorial (x-1)
-
 axiomIdentitySum = Axiom {
   description = "Additive identity",
   example = (

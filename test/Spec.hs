@@ -10,7 +10,7 @@ import Axiomator.Parser
 main :: IO ()
 main = defaultMain tests
 
-testValidExample a = 
+testValidExample a =
   let
     f = implementation a
     d = description a
@@ -31,6 +31,9 @@ axiomsToTest =
   , axiomAssociateSum
   , axiomCommuteProduct
   , axiomAssociateProduct
+  , axiomSumConst
+  , axiomMultiplyConst
+  , axiomFactorialConst
   ]
 
 tests :: TestTree
@@ -43,5 +46,9 @@ tests = testGroup "Axioms"
   , testGroup "Associate Product" $
     [ testApply axiomAssociateProduct "a(bc)" "(ab)c"
     , testApply axiomAssociateProduct "(ab)c" "a(bc)"
+    , testApply axiomAssociateProduct "(ab)/c" "a(b/c)"
+    ]
+  , testGroup "Multiply Constant" $
+    [ testApply axiomMultiplyConst "2^3" "8"
     ]
   ]
