@@ -6,6 +6,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
+
+import Axiomator.Types
+import Axiomator.Parser
+import Axiomator.Axioms
 import Control.Arrow (first)
 import Control.Monad (mfilter)
 import Data.String (IsString(..))
@@ -19,10 +23,6 @@ import Data.Maybe (catMaybes, isNothing, fromJust)
 import Data.Monoid ((<>))
 import Control.Monad (msum, forM_)
 
-import Text.Parsec hiding (State(..))
-import Text.Parsec.Expr
-import qualified Text.Parsec.Token    as Tok
-import qualified Text.Parsec.Language as Tok
 
 -- import Control.Monad.Freer (Eff, Members, Member, run, runM)
 -- import Control.Monad.Freer.Error (Error, throwError, runError)
@@ -31,19 +31,6 @@ import qualified Text.Parsec.Language as Tok
 import Test.Tasty
 import Test.Tasty.HUnit
 
-data Term1 = Factorial | Negate | Function String
-  deriving (Show, Eq)
-data Term2 = Sum | Product | Fraction | Exponent | Series String | Limit String
-  deriving (Show, Eq)
-
-data Term =
-  Hole |
-  Const Integer |
-  Var String |
-  Op1 Term1 Term |
-  Op2 Term2 Term Term
-  deriving (Show, Eq)
-
 data Crumb =
     LeftCrumb Term
   | RightCrumb Term
@@ -51,29 +38,6 @@ data Crumb =
 
 type Crumbs = [Crumb]
 type Zipper = (Term, Crumbs)
-
-allowedFunctionNames =
-  [ "sin"
-  , "cos"
-  , "tan"
-  , "f"
-  , "g"
-  ]
-
--- TODO: replace with Text package
-replace a b = map $ maybe b id . mfilter (/= a) . Just
-
-data Axiom = Axiom {
-  description :: String,
-  example :: (Term, Term),
-  implementation :: Term -> Either Term Term
-}
-
-instance Eq Axiom where
-  a == b = description a == description b
-
-instance Show Axiom where
-  show (Axiom { description = d }) = d
 
 axiomSubstitute pattern replacement = Axiom {
   description = "Replace expression with known alternative",
@@ -84,47 +48,7 @@ axiomSubstitute pattern replacement = Axiom {
     -- TODO: Verify all occurences of variables in t are equal
     f t = Right $ replaceVars (identifyVars pattern t) replacement
 
-axiomCommuteSum = Axiom {
-  description = "Commutative law for addition",
-  example = ("a+b", "b+a"),
-  implementation = f
-}
-  where
-    f (Op2 Sum a b) = Right (Op2 Sum b a)
-    f t = Left t
 
-axiomAssociateSum = Axiom {
-  description = "Associative law for addition",
-  example = ("a+(b+c)", "(a+b)+c"),
-  implementation = f
-}
-  where
-    f (Op2 Sum (Op2 Sum a b) c) = Right (Op2 Sum a (Op2 Sum b c))
-    f (Op2 Sum a (Op2 Sum b c)) = Right (Op2 Sum (Op2 Sum a b) c)
-    f t = Left t
-
-axiomCommuteProduct = Axiom {
-  description = "Commutative law for multiplication",
-  example = (Op2 Product (Var "a") (Var "b"), Op2 Product (Var "b") (Var "a")),
-  implementation = f
-}
-  where
-    f (Op2 Product a b) = Right (Op2 Product b a)
-    f t = Left t
-
-axiomAssociateProduct = Axiom {
-  description = "Associative law for multiplication",
-  example = (
-    "a(bc)",
-    "(ab)c"
-  ),
-  implementation = f
-}
-  where
-    f (Op2 Product (Op2 Product a b) c) = Right (Op2 Product a (Op2 Product b c))
-    f (Op2 Product a (Op2 Product b c)) = Right (Op2 Product (Op2 Product a b) c)
-    f (Op2 Fraction (Op2 Product a b) c) = Right (Op2 Product a (Op2 Fraction b c))
-    f t = Left t
 
 axiomSumConst = Axiom {
   description = "Sum constants",
@@ -166,7 +90,7 @@ factorial x = x * factorial (x-1)
 axiomIdentitySum = Axiom {
   description = "Additive identity",
   example = (
-    "0+a+0",
+    "a+0",
     "a"
   ),
   implementation = f
@@ -190,6 +114,7 @@ axiomIdentityProduct = Axiom {
     f (Op2 Fraction t (Const 1)) = Right t
     f t = Left t
 
+-- TODO: Remove
 axiomZeroSum = Axiom {
   description = "Additive zero",
   example = (
@@ -483,52 +408,11 @@ termEqual (Const a) (Op1 Negate (Const c)) = a == -c
 termEqual (Op1 Negate (Const a)) (Const c) = a == -c
 termEqual _ _ = False
 
-instance IsString Term where
-    fromString cs = parseUnsafe cs
-
 walk :: (Term -> Term) -> Term -> Term
 walk f (Op1 op t) = f (Op1 op (walk f t))
 walk f (Op2 op a b) = f (Op2 op (walk f a) (walk f b))
 walk f t = f t
 
-precedence (Op1 Factorial _) = 40
-precedence (Op2 Exponent _ _) = 30
-precedence (Op2 Product _ _) = 20
-precedence (Op2 Fraction _ _) = 20
-precedence (Op2 Sum _ _) = 10
-precedence _ = 99
-
-maybeBrackets parent child = let inner = toUnicode child in
-  if precedence child < precedence parent then
-    "(" <> inner <> ")"
-  else
-    inner
-
-toUnicode Hole             = "_"
-toUnicode (Const a)        = show a
-toUnicode (Var a)          = a
-toUnicode t@(Op2 Sum a (Op1 Negate b))      = maybeBrackets t a <> " - " <> maybeBrackets t b
-toUnicode t@(Op2 Sum a b) = maybeBrackets t a <> " + " <> maybeBrackets t b
-toUnicode t@(Op2 Product a b)  =
-  let operator = case (a, b) of
-                   (_, Const{}) -> "⋅"
-                   (_, Op1 Negate _) -> "⋅"
-                   _            -> ""
-  in maybeBrackets t a <> operator  <> maybeBrackets t b
-
-toUnicode t@(Op1 Factorial a)  = maybeBrackets t a <> "!"
-toUnicode t@(Op2 Fraction a b) = maybeBrackets t a <> "/" <> maybeBrackets t b
-toUnicode t@(Op2 Exponent a b) = maybeBrackets t a <> "^" <> maybeBrackets t b
-toUnicode t@(Op1 Negate a) = "-" <> maybeBrackets t a
-toUnicode t@(Op1 (Function name) a) = name <> "(" <> toUnicode a <> ")"
-toUnicode (Op2 (Series v) i t)   =
-  "Σ[" <> v <> " = " <> toUnicode i <> "](" <> toUnicode t <> ")"
-toUnicode (Op2 (Limit v) i t)   =
-  "lim[" <> v <> " → " <> toUnicode i <> "](" <> toUnicode t <> ")"
-
--- TODO: Use -> for arrow
-toAscii :: Term -> String
-toAscii = replace 'Σ' 'S' . replace '⋅' '*' . replace '→' '>' . toUnicode
 
 data Env = Env Term deriving (Show)
 
@@ -550,73 +434,6 @@ ignoreError (Right x) = x
 --     Left t' -> do
 --       error $ "couldn't apply " <> description axiom <> " to " <> toUnicode t' <> " (full term is " <> toUnicode t <> ")"
 
-lexer :: Tok.TokenParser ()
-lexer = Tok.makeTokenParser style
-  where
-    style = Tok.emptyDef
-      { Tok.reservedOpNames = ["+", "!", "^", "/", "*"]
-      , Tok.reservedNames   = []
-      , Tok.identStart      = letter
-      }
-
-reservedOp = Tok.reservedOp lexer
-whiteSpace = Tok.whiteSpace lexer
-
-parens = between (char '(' <* whiteSpace) (char ')')
-
-termExpr = (parens expr
-             <|> Const . read <$> many1 (oneOf ['0'..'9'])
-             <|> Var . replicate 1 <$> oneOf ['a'..'z']
-             <|> (char '_' >> return Hole)
-           ) <* whiteSpace
-
-table = [ [postfix "!" (Op1 Factorial), series "S", limit "lim", functionExpr, prefix "-" (Op1 Negate) ]
-        , [binary "^" (Op2 Exponent) AssocLeft ]
-        , [binary "*" (Op2 Product) AssocLeft, binary "/" (Op2 Fraction) AssocLeft, binary "" (Op2 Product) AssocLeft]
-        , [binary "+" (Op2 Sum) AssocLeft, binary "-" (\a b -> Op2 Sum a (Op1 Negate b)) AssocLeft ]
-        ]
-
-functionExpr :: Monad m => Operator String u m Term
-functionExpr = Prefix . try $ do
-  name <- msum . map string $ allowedFunctionNames
-  return $ Op1 (Function name)
-
-series op = Prefix $
-  do
-    string op
-    char '['
-    v <- replicate 1 <$> oneOf ['a'..'z']
-    whiteSpace
-    char '='
-    whiteSpace
-    i <- expr
-    char ']'
-
-    return $ Op2 (Series v) i
-
-limit op = Prefix $
-  do
-    string op
-    char '['
-    v <- replicate 1 <$> oneOf ['a'..'z']
-    whiteSpace
-    string "->"
-    whiteSpace
-    i <- expr
-    char ']'
-
-    return $ Op2 (Limit v) i
-
-prefix name fun = Prefix (do { reservedOp name; return fun })
-postfix name fun = Postfix (do { reservedOp name; return fun })
-binary name fun assoc = Infix (do { reservedOp name; return fun}) assoc
-
-expr = buildExpressionParser table (whiteSpace *> termExpr)
-
-parseUnsafe input =
-  case parse expr input input of
-    Right x -> x
-    Left x -> error $ "error parsing: " <> input
 
 -- highlightTerms m = do
 --   Env t <- get

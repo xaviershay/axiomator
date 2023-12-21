@@ -25,7 +25,9 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Axiomator.Axioms
+      Axiomator.Parser
+      Axiomator.Types
   other-modules:
       Paths_axiomator
   autogen-modules:
