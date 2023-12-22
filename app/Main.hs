@@ -36,18 +36,6 @@ import Test.Tasty.HUnit
 
 
 
-axiomFactor factor = Axiom {
-  description = "Factor",
-  example = (
-    parseUnsafe "lim[h->x](ab)",
-    parseUnsafe "a*lim[h->x](b)"
-  ),
-  implementation = f
-}
-  where
-    f (Op2 limit@(Limit _) v inner@(Op2 Product _ _)) = Right $ Op2 Product factor (Op2 limit v (simplify . cancelTerm factor $ Op2 Fraction inner factor))
-    f t = Left t
-
 allAxioms =
   [ axiomCommuteSum
   , axiomAssociateSum
@@ -62,29 +50,6 @@ allAxioms =
 p = parseUnsafe
 ps = putStrLn . toAscii
 
-simplify t = walk f t
-  where
-    f (Op1 Negate (Const a)) = Const (-a)
-    f (Op1 Negate (Op1 Negate a)) = a
-    f (Op2 Sum (Const a) (Const b)) = Const $ a + b
-    f (Op2 Product (Const a) (Const b)) = Const $ a * b
-    f (Op2 Exponent a (Const 0)) = Const 1
-    f (Op2 Exponent a (Const 1)) = a
-    f (Op2 Exponent (Const a) (Const b)) = Const $ a ^ b
-    f (Op2 Fraction a (Const 1)) = a
-    f (Op2 Fraction a (Const (-1))) = f $ Op1 Negate a
-    f t@(Op2 Fraction (Const a) (Const b)) =
-      case gcd a b of
-        1 -> t
-        n -> simplify $ Op2 Fraction (Const $ a `div` n) (Const $ b `div` n)
-    f (Op2 Product (Const 1) a) = a
-    f (Op2 Product a (Const 1)) = a
-    f (Op2 Product (Const (-1)) a) = f $ Op1 Negate a
-    f (Op2 Product a (Const (-1))) = f $ Op1 Negate a
-    f (Op2 Sum a (Const 0)) = a
-    f (Op2 Sum (Const 0) a) = a
-    f x = x
-
 distribute t (Op2 Product a (Op2 Sum b c)) =
   let x = cancelTerm t $ Op2 Fraction a t in
 
@@ -98,37 +63,6 @@ undistribute t (Op2 Sum a b) =
     Op2 Sum
       (cancelTerm t $ Op2 Fraction a t)
       (cancelTerm t $ Op2 Fraction b t)
-
-cancelTerm :: Term -> Term -> Term
-cancelTerm (Op2 Exponent x y) f@(Op2 Fraction (Op2 Exponent a b) (Op2 Exponent c d)) =
-  case Op2 Fraction <$> numerator <*> denominator of
-    Just x -> x
-    Nothing -> f
-  where
-    numerator = if x == a then Just (Op2 Exponent a (Op2 Sum b (Op2 Product (Const (-1)) y))) else Nothing
-    denominator = if x == c then Just (Op2 Exponent c (Op2 Sum d (Op2 Product (Const (-1)) y))) else Nothing
-
-cancelTerm t f@(Op2 Fraction (Op2 Exponent _ _) (Op2 Exponent _ _)) = cancelTerm (Op2 Exponent t (Const 1)) f
-cancelTerm t (Op2 Fraction lhs@(Op2 Exponent _ _) rhs) = cancelTerm t (Op2 Fraction lhs (Op2 Exponent rhs (Const 1)))
-cancelTerm t (Op2 Fraction lhs rhs@(Op2 Exponent _ _)) = cancelTerm t (Op2 Fraction (Op2 Exponent lhs (Const 1)) rhs)
-cancelTerm t f@(Op2 Fraction (Op2 Product a b) (Op2 Product c d)) =
-    case Op2 Fraction <$> numerator <*> denominator of
-      Just x -> x
-      Nothing -> f
-  where
-    numerator =
-      case (a, b) of
-        (a, b) | a == t -> Just b
-        (a, b) | b == t -> Just a
-        _               -> Nothing
-    denominator =
-      case (c, d) of
-        (c, d) | c == t -> Just d
-        (c, d) | d == t -> Just c
-        _               -> Nothing
-cancelTerm t (Op2 Fraction l@(Op2 Product _ _) r) = cancelTerm t (Op2 Fraction l (Op2 Product r (Const 1)))
-cancelTerm t (Op2 Fraction l r@(Op2 Product _ _)) = cancelTerm t (Op2 Fraction l (Op2 Product (Const 1) r))
-cancelTerm t (Op2 Fraction l r) = cancelTerm t (Op2 Fraction (Op2 Product (Const 1) l) (Op2 Product (Const 1) r))
 
 filterZip :: (Term -> Bool) -> Zipper -> [Zipper]
 filterZip f (Hole, _) = []
@@ -325,36 +259,6 @@ toAsciiTests =
 
 tests = testGroup "Axioms"
   [ toAsciiTests
-  , validateAll "simplify" simplify
-    [ ("a + 0", "a")
-    , ("0 + a", "a")
-    , ("a*1", "a")
-    , ("1*a", "a")
-    , ("a/1", "a")
-    , ("a^1", "a")
-    , ("1+2", "3")
-    , ("1+2+3", "6")
-    , ("2*3", "6")
-    , ("2*3*4", "24")
-    , ("2*3+4", "10")
-    , ("a^0", "1")
-    , ("2^2", "4")
-    , ("4/2", "2")
-    , ("14/8", "7/4")
-    , ("3-2", "1")
-    , ("-1+2", "1")
-    , ("-1-2", "-3")
-    , ("3*(-2)", "-6")
-    , ("-3*2", "-6")
-    , ("-3*(-2)", "6")
-    , ("-(-1)", "1")
-    , ("-1*(-x)", "x")
-    , ("-x*(-1)", "x")
-    , ("-x/(-1)", "x")
-    , ("sin(x)", "sin(x)")
-    , ("S[h=0](h)", "S[h=0](h)")
-    , ("lim[h->0](h)", "lim[h->0](h)")
-    ]
   , validateAll "distribute \"a\"" (simplify . distribute "a") $
       [ ("a(b+c)", "ab+ac")
       , ("2a(b+c)", "2(ab+ac)")
