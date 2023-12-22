@@ -31,148 +31,10 @@ import Control.Monad (msum, forM_)
 import Test.Tasty
 import Test.Tasty.HUnit
 
-data Crumb =
-    LeftCrumb Term
-  | RightCrumb Term
-  deriving (Show)
-
-type Crumbs = [Crumb]
-type Zipper = (Term, Crumbs)
-
-axiomSubstitute pattern replacement = Axiom {
-  description = "Replace expression with known alternative",
-  example = (pattern, replacement),
-  implementation = f
-}
-  where
-    -- TODO: Verify all occurences of variables in t are equal
-    f t = Right $ replaceVars (identifyVars pattern t) replacement
 
 
-axiomIdentitySum = Axiom {
-  description = "Additive identity",
-  example = (
-    "a+0",
-    "a"
-  ),
-  implementation = f
-}
-  where
-    f (Op2 Sum (Const 0) t) = Right t
-    f (Op2 Sum t (Const 0)) = Right t
-    f t = Left t
 
-axiomIdentityProduct = Axiom {
-  description = "Multiplicative identity",
-  example = (
-    (Op2 Product (Op2 Product (Const 1) (Var "a")) (Const 1)),
-    (Var "a")
-  ),
-  implementation = f
-}
-  where
-    f (Op2 Product (Const 1) t) = Right t
-    f (Op2 Product t (Const 1)) = Right t
-    f (Op2 Fraction t (Const 1)) = Right t
-    f t = Left t
 
--- TODO: Remove
-axiomZeroSum = Axiom {
-  description = "Additive zero",
-  example = (
-    "a+0",
-    "a"
-  ),
-  implementation = f
-}
-  where
-    f (Op2 Sum (Const 0) t) = Right t
-    f (Op2 Sum t (Const 0)) = Right t
-    f t = Left t
-
-axiomZeroProduct = Axiom {
-  description = "Multiplicative zero",
-  example = (
-    "a*0",
-    "0"
-  ),
-  implementation = f
-}
-  where
-    f (Op2 Product (Const 0) t) = Right (Const 0)
-    f (Op2 Product t (Const 0)) = Right (Const 0)
-    f t = Left t
-
-axiomNullOp2 Exponent = Axiom {
-  description = "Op2 Exponent of 0",
-  example = (
-    (Op2 Exponent (Var "a") (Const 0)),
-    (Const 1)
-  ),
-  implementation = f
-}
-  where
-    f (Op2 Exponent t (Const 0)) = Right (Const 1)
-    f t = Left t
-
-axiomIdentity = Axiom {
-  description = "Identity",
-  example = (
-    (Var "a"),
-    (Var "a")
-  ),
-  implementation = f
-}
-  where
-    f t = Right t
-
-axiomStepSeries = Axiom {
-  description = "Step series",
-  example = (
-    (Op2 (Series "k") (Var "a") (Var "k")),
-    (Op2 Sum (Var "a") (Op2 (Series "k") (Op2 Sum (Var "a") (Const 1)) (Var "k")))
-  ),
-  implementation = f
-}
-  where
-    f (Op2 (Series v) i t) = Right $
-      Op2 Sum
-        (walk (instantiateVariable v i) t)
-        (Op2 (Series v) (Op2 Sum i (Const 1)) t)
-    f t = Left t
-
-axiomDistribute = Axiom {
-  description = "Distributive law",
-  example = (
-    parseUnsafe "a*(b+c)",
-    parseUnsafe "ab+ac"
-  ),
-  implementation = f
-}
-  where
-    -- ab+ac -> a*(b+c)
-    f (Op2 Sum (Op2 Product p1l p1r) (Op2 Product p2l p2r))
-      | p1l == p2l = Right $ Op2 Product p1l (Op2 Sum p1r p2r)
-    -- a(b+c) -> ab+ac
-    f (Op2 Product pl (Op2 Sum sl sr)) = Right $ Op2 Sum (Op2 Product pl sl) (Op2 Product pl sr)
-    -- -x+ab -> x*-1+ab
-    f (Op2 Sum (Op1 Negate l) p@(Op2 Product _ _)) = f (Op2 Sum (Op2 Product l (Const $ -1)) p)
-    -- x+ab -> x*1+ab
-    f (Op2 Sum l p@(Op2 Product _ _)) = f (Op2 Sum (Op2 Product l (Const 1)) p)
-    f (Op2 Fraction (Op2 Sum l r) d) = Right $ Op2 Sum (Op2 Fraction l d) (Op2 Fraction r d)
-    f t = Left t
-
-axiomDistributeLimit = Axiom {
-  description = "Distributive law for limits",
-  example = (
-    parseUnsafe "lim[h->x](a+b)",
-    parseUnsafe "lim[h->x](a) + lim[h->x](b)"
-  ),
-  implementation = f
-}
-  where
-    f (Op2 limit@(Limit _) v (Op2 Sum l r)) = Right $ Op2 Sum (Op2 limit v l) (Op2 limit v r)
-    f t = Left t
 
 axiomFactor factor = Axiom {
   description = "Factor",
@@ -185,10 +47,6 @@ axiomFactor factor = Axiom {
   where
     f (Op2 limit@(Limit _) v inner@(Op2 Product _ _)) = Right $ Op2 Product factor (Op2 limit v (simplify . cancelTerm factor $ Op2 Fraction inner factor))
     f t = Left t
-
-instantiateVariable :: String -> Term -> Term -> Term
-instantiateVariable name value (Var vname) | name == vname = value
-instantiateVariable _ _ t = t
 
 allAxioms =
   [ axiomCommuteSum
@@ -272,35 +130,6 @@ cancelTerm t (Op2 Fraction l@(Op2 Product _ _) r) = cancelTerm t (Op2 Fraction l
 cancelTerm t (Op2 Fraction l r@(Op2 Product _ _)) = cancelTerm t (Op2 Fraction l (Op2 Product (Const 1) r))
 cancelTerm t (Op2 Fraction l r) = cancelTerm t (Op2 Fraction (Op2 Product (Const 1) l) (Op2 Product (Const 1) r))
 
-goLeft :: Zipper -> Zipper
-goLeft (Op2 op l r, cs) = (l, LeftCrumb (Op2 op Hole r):cs)
-goLeft (Op1 op l, cs) = (l, LeftCrumb (Op1 op Hole):cs)
-goLeft z = error $ show z
---goLeft (t, cs) = (Hole, cs)
-
-goRight :: Zipper -> Zipper
-goRight (Op2 op l r, cs) = (r, RightCrumb (Op2 op l Hole):cs)
-goRight (Op1 Factorial t, cs) = (t, RightCrumb (Op1 Factorial Hole):cs)
-goRight z = error $ show z
---goRight (t, cs) = (Hole, cs)
-
-goUp :: Zipper -> Zipper
-goUp (t, LeftCrumb (Op2 op _ r):cs) = (Op2 op t r, cs)
-goUp (t, RightCrumb (Op2 op l _):cs) = (Op2 op l t, cs)
-
-goRoot :: Zipper -> Term
-goRoot (t, []) = t
-goRoot z = goRoot . goUp $ z
-
-
--- TODO: Handle when structure isn't identical
-follow :: Zipper -> Zipper -> Zipper
-follow (_, pattern) target = (foldr (.) id . extractF $ pattern) target
-  where
-    extractF [] = []
-    extractF (LeftCrumb _:cs) = (goLeft:extractF cs)
-    extractF (RightCrumb _:cs) = (goRight:extractF cs)
-
 filterZip :: (Term -> Bool) -> Zipper -> [Zipper]
 filterZip f (Hole, _) = []
 filterZip f z@(t, cs) = do
@@ -309,45 +138,10 @@ filterZip f z@(t, cs) = do
       rhs = filterZip f (goRight z)
     in currentNode ++ lhs ++ rhs
 
-isConst (Const t) = True
-isConst _ = False
-
-goDown :: Zipper -> [Zipper]
-goDown (Op2 op l r, cs) = [(l, LeftCrumb (Op2 op Hole r):cs), (r, RightCrumb (Op2 op l Hole):cs)]
-goDown (Op1 op l, cs) = [(l, LeftCrumb (Op1 op Hole):cs)]
-goDown _ = []
-
-allZips :: Term -> [Zipper]
-allZips t = allZips' (t, [])
-
-allZips' :: Zipper -> [Zipper]
-allZips' z = let zs = goDown z in z:concatMap allZips' zs
-
-
-locateVars :: Term -> [Zipper]
-locateVars = filter isVar . allZips
-  where
-    isVar (Var _, _) = True
-    isVar _ = False
-
 -- For each var
 --   follow in t
 --   assign value to var
 --   need a map of var -> Term
-
-mkZipper t = (t, [])
-
-identifyVars :: Term -> Term -> [(String, Zipper)]
-identifyVars pattern t = map f . locateVars $ pattern
-  where
-    f z@(Var x, _) = (x, follow z (mkZipper t))
-
-replaceVars :: [(String, Zipper)] -> Term -> Term
-replaceVars vs t = foldl f t vs
-  where
-    f :: Term -> (String, Zipper) -> Term
-    f t' (v, (rt, _)) = walk (instantiateVariable v rt) t'
-
 
 
 locate :: Term -> Term -> Maybe Zipper
@@ -369,12 +163,6 @@ termEqual (Const a) (Const c) = a == c
 termEqual (Const a) (Op1 Negate (Const c)) = a == -c
 termEqual (Op1 Negate (Const a)) (Const c) = a == -c
 termEqual _ _ = False
-
-walk :: (Term -> Term) -> Term -> Term
-walk f (Op1 op t) = f (Op1 op (walk f t))
-walk f (Op2 op a b) = f (Op2 op (walk f a) (walk f b))
-walk f t = f t
-
 
 data Env = Env Term deriving (Show)
 
@@ -506,7 +294,6 @@ main = defaultMain tests
 --   focus "lim[h->_]((cos(h)-1)/_)" $ apply (axiomSubstitute "lim[a->0]((cos(a)-1)/a)" "0")
 --   focus "sin(x)_" $ apply axiomZeroProduct
 --   focus "cos(x)_" $ apply axiomIdentityProduct
---   apply axiomZeroSum
 
 validate :: (Term -> Term) -> Term -> Term -> TestTree
 validate f input expected =

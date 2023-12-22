@@ -3,7 +3,14 @@ module Axiomator.Types
   , Term1(..)
   , Term2(..)
   , Axiom(..)
+  , Zipper
+  , Crumb(..)
+  , mkZipper
+  , goLeft
+  , goRight
+  , allZips
   , toUnicode
+  , walk
   ) where
 
 import Control.Monad (mfilter)
@@ -32,6 +39,47 @@ instance Eq Axiom where
 
 instance Show Axiom where
   show (Axiom { description = d }) = d
+
+data Crumb =
+    LeftCrumb Term
+  | RightCrumb Term
+  deriving (Show)
+
+type Crumbs = [Crumb]
+type Zipper = (Term, Crumbs)
+
+mkZipper t = (t, [])
+
+goLeft :: Zipper -> Zipper
+goLeft (Op2 op l r, cs) = (l, LeftCrumb (Op2 op Hole r):cs)
+goLeft (Op1 op l, cs) = (l, LeftCrumb (Op1 op Hole):cs)
+goLeft z = error $ show z
+--goLeft (t, cs) = (Hole, cs)
+
+goRight :: Zipper -> Zipper
+goRight (Op2 op l r, cs) = (r, RightCrumb (Op2 op l Hole):cs)
+goRight (Op1 Factorial t, cs) = (t, RightCrumb (Op1 Factorial Hole):cs)
+goRight z = error $ show z
+--goRight (t, cs) = (Hole, cs)
+
+goUp :: Zipper -> Zipper
+goUp (t, LeftCrumb (Op2 op _ r):cs) = (Op2 op t r, cs)
+goUp (t, RightCrumb (Op2 op l _):cs) = (Op2 op l t, cs)
+
+goRoot :: Zipper -> Term
+goRoot (t, []) = t
+goRoot z = goRoot . goUp $ z
+
+goDown :: Zipper -> [Zipper]
+goDown (Op2 op l r, cs) = [(l, LeftCrumb (Op2 op Hole r):cs), (r, RightCrumb (Op2 op l Hole):cs)]
+goDown (Op1 op l, cs) = [(l, LeftCrumb (Op1 op Hole):cs)]
+goDown _ = []
+
+allZips :: Term -> [Zipper]
+allZips t = allZips' (t, [])
+  where
+    allZips' :: Zipper -> [Zipper]
+    allZips' z = let zs = goDown z in z:concatMap allZips' zs
 
 toUnicode Hole             = "_"
 toUnicode (Const a)        = show a
@@ -74,3 +122,8 @@ toAscii = replace 'Σ' 'S' . replace '⋅' '*' . replace '→' '>' . toUnicode
 
 -- TODO: replace with Text package
 replace a b = map $ maybe b id . mfilter (/= a) . Just
+
+walk :: (Term -> Term) -> Term -> Term
+walk f (Op1 op t) = f (Op1 op (walk f t))
+walk f (Op2 op a b) = f (Op2 op (walk f a) (walk f b))
+walk f t = f t
