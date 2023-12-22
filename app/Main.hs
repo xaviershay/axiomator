@@ -236,30 +236,8 @@ validate f input expected =
 validateAll :: TestName -> (Term -> Term) -> [(Term, Term)] -> TestTree
 validateAll name f = testGroup name . map (uncurry $ validate f)
 
-toAsciiTests =
-  testGroup "toAscii (bracket reduction)" . map f $
-    [ ("a+b", "a + b")
-    , ("a+b+c", "a + b + c")
-    , ("a+(bc)", "a + bc")
-    , ("a*b+c)", "ab + c")
-    , ("(a+b)*c", "(a + b)c")
-    , ("abc", "abc")
-    , ("a+b/c", "a + b/c")
-    , ("(a+b)/c", "(a + b)/c")
-    , ("a^2", "a^2")
-    , ("(a+b)^(cd)", "(a + b)^(cd)")
-    , ("(a+b)^c*d", "(a + b)^cd")
-    , ("2a!", "2a!")
-    , ("(2a)!", "(2a)!")
-    ]
-
-  where
-    f :: (String, String) -> TestTree
-    f (input, expected) = testCase (input <> " = " <> expected) $ expected @=? toAscii (parseUnsafe input)
-
 tests = testGroup "Axioms"
-  [ toAsciiTests
-  , validateAll "distribute \"a\"" (simplify . distribute "a") $
+  [ validateAll "distribute \"a\"" (simplify . distribute "a") $
       [ ("a(b+c)", "ab+ac")
       , ("2a(b+c)", "2(ab+ac)")
       ]

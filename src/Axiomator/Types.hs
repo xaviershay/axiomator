@@ -9,6 +9,7 @@ module Axiomator.Types
   , goLeft
   , goRight
   , allZips
+  , toAscii
   , toUnicode
   , walk
   ) where

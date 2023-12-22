@@ -117,6 +117,25 @@ tests = testGroup "Axiomator"
     , ("S[h=0](h)", "S[h=0](h)")
     , ("lim[h->0](h)", "lim[h->0](h)")
     ]
+  , let
+      f (input, expected) = testCase (input <> " = " <> expected) $
+        expected @=? toAscii (parseUnsafe input)
+    in
+    testGroup "toAscii (bracket reduction)" $ map f
+      [ ("a+b", "a + b")
+      , ("a+b+c", "a + b + c")
+      , ("a+(bc)", "a + bc")
+      , ("a*b+c)", "ab + c")
+      , ("(a+b)*c", "(a + b)c")
+      , ("abc", "abc")
+      , ("a+b/c", "a + b/c")
+      , ("(a+b)/c", "(a + b)/c")
+      , ("a^2", "a^2")
+      , ("(a+b)^(cd)", "(a + b)^(cd)")
+      , ("(a+b)^c*d", "(a + b)^cd")
+      , ("2a!", "2a!")
+      , ("(2a)!", "(2a)!")
+      ]
   ]
 
 validate :: (Term -> Term) -> Term -> Term -> TestTree
