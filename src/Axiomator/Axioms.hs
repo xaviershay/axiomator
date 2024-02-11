@@ -38,7 +38,8 @@ axiomCommuteProduct = Axiom {
   implementation = f
 }
   where
-    f (Op2 Product a b) = Right (Op2 Product b a)
+    f (Op2 Product a b) = Right $ Op2 Product b a
+    f (Op1 Negate t) = Right $ Op2 Product t (Op1 Negate (Const 1))
     f t = Left t
 
 axiomAssociateProduct = Axiom {
@@ -106,6 +107,7 @@ axiomIdentityProduct = Axiom {
 }
   where
     f (Op2 Product t (Const 1)) = Right t
+    --f t = Right $ Op2 Product t (Const 1)
     --f (Op2 Fraction t (Const 1)) = Right t
     f t = Left t
 
@@ -145,7 +147,7 @@ axiomDistribute = Axiom {
     --f (Op2 Sum (Op1 Negate l) p@(Op2 Product _ _)) = f (Op2 Sum (Op2 Product l (Const $ -1)) p)
     ---- x+ab -> x*1+ab
     --f (Op2 Sum l p@(Op2 Product _ _)) = f (Op2 Sum (Op2 Product l (Const 1)) p)
-    --f (Op2 Fraction (Op2 Sum l r) d) = Right $ Op2 Sum (Op2 Fraction l d) (Op2 Fraction r d)
+    f (Op2 Fraction (Op2 Sum l r) d) = Right $ Op2 Sum (Op2 Fraction l d) (Op2 Fraction r d)
     f t = Left t
 
 axiomDistributeLimit = Axiom {

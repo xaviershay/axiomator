@@ -65,9 +65,13 @@ tests = testGroup "Axiomator"
       , testApply axiomAssociateProduct "(ab)c" "a(bc)"
       , testApply axiomAssociateProduct "(ab)/c" "a(b/c)"
       ]
+    , testGroup "Commute Product" $
+      [ testApply axiomCommuteProduct "-a" "a * -1"
+      ]
     , testGroup "Distribute" $
       [ testApply axiomDistribute "ab+ac" "a(b+c)"
       , testApply axiomDistribute "a(b+c)" "ab+ac"
+      , testApply axiomDistribute "(a+b)/c" "a/c+b/c"
       ]
     , testGroup "Multiply Constant" $
       [ testApply axiomMultiplyConst "2^3" "8"

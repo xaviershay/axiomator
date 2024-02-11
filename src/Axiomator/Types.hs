@@ -6,8 +6,10 @@ module Axiomator.Types
   , Zipper
   , Crumb(..)
   , mkZipper
+  , goDown
   , goLeft
   , goRight
+  , goRoot
   , allZips
   , toAscii
   , toUnicode

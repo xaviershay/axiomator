@@ -22,7 +22,7 @@ import qualified Data.HashMap.Strict as M
 import Data.Maybe (catMaybes, isNothing, fromJust)
 import Data.Monoid ((<>))
 import Control.Monad (msum, forM_)
-
+import Control.Monad.RWS.Strict (RWS, tell, put, runRWS, get)
 
 -- import Control.Monad.Freer (Eff, Members, Member, run, runM)
 -- import Control.Monad.Freer.Error (Error, throwError, runError)
@@ -30,11 +30,6 @@ import Control.Monad (msum, forM_)
 -- import Control.Monad.Freer.Writer (Writer(..), tell, runWriter)
 import Test.Tasty
 import Test.Tasty.HUnit
-
-
-
-
-
 
 allAxioms =
   [ axiomCommuteSum
@@ -72,20 +67,14 @@ filterZip f z@(t, cs) = do
       rhs = filterZip f (goRight z)
     in currentNode ++ lhs ++ rhs
 
--- For each var
---   follow in t
---   assign value to var
---   need a map of var -> Term
-
-
 locate :: Term -> Term -> Maybe Zipper
 locate needle haystack = locate' needle (haystack, [])
-
-locate' :: Term -> Zipper -> Maybe Zipper
-locate' Hole z = Just z
-locate' _ (Hole, _) = Nothing
-locate' a z@(b, _) | a `termEqual` b = Just z
-locate' a z = msum . map (locate' a) . goDown $ z
+  where
+    locate' :: Term -> Zipper -> Maybe Zipper
+    locate' Hole z = Just z
+    locate' _ (Hole, _) = Nothing
+    locate' a z@(b, _) | a `termEqual` b = Just z
+    locate' a z = msum . map (locate' a) . goDown $ z
 
 termEqual :: Term -> Term -> Bool
 termEqual Hole _ = True
@@ -99,35 +88,31 @@ termEqual (Op1 Negate (Const a)) (Const c) = a == -c
 termEqual _ _ = False
 
 data Env = Env Term deriving (Show)
-
 type Log = [(Term, Axiom)]
+type AppMonad = RWS () Log Env
 -- type AppEff effs = Members '[ Writer Log, State Env ] effs
 
 ignoreError :: Either a a -> a
 ignoreError (Left x) = x
 ignoreError (Right x) = x
 
--- apply :: AppEff effs => Axiom -> Eff effs ()
--- apply axiom = do
---   Env t <- get
--- 
---   case (implementation axiom) t of
---     Right t' -> do
---       tell [(t', axiom)]
---       put (Env t')
---     Left t' -> do
---       error $ "couldn't apply " <> description axiom <> " to " <> toUnicode t' <> " (full term is " <> toUnicode t <> ")"
+apply :: Axiom -> AppMonad ()
+apply axiom = do
+  Env t <- get
 
-
--- highlightTerms m = do
---   Env t <- get
--- 
---   let ms = filterZip m (t, [])
--- 
---   traceM "====="
---   forM_ ms $ \(t',_) -> do
---     traceM . toAscii $ t'
---     traceM "---"
+  case (implementation axiom) t of
+    Right t' -> do
+      tell [(t', axiom)]
+      put (Env t')
+    Left t' -> do
+      error $ "couldn't apply "
+        <> description axiom
+        <> " to: \n  "
+        <> toUnicode t'
+        <> "\n  "
+        <> show t'
+        <> "\nfull term is: \n  "
+        <> show t
 
 -- TODO: Handle variable aliasing properly for nested series
 e_to t = (Op2 (Series "k") (Const 0) (Op2 Fraction (Op2 Exponent t (Var "k")) (Op1 Factorial (Var "k"))))
@@ -144,90 +129,76 @@ printAxioms axioms = do
     putStr ": "
     putStr $ replicate (paddingDesc - length (description axiom)) ' '
     let (lhs, rhs) = example axiom
-    putStr $ toAscii lhs
+    putStr lhs
     putStr " = "
-    putStrLn $ toAscii rhs
+    putStrLn rhs
 
--- type AllEffs = '[ Writer Log, State Env ]
--- runApp :: Env -> Eff AllEffs a -> (Term, Log)
--- runApp env m = do
---   let ((_, log), (Env t)) = run . runState env . runWriter $ m
--- 
---   (t, log)
--- 
--- initial :: Term -> Eff AllEffs ()
--- initial t = do
---   tell [(t, axiomIdentity)]
---   put (Env t)
+runApp :: Env -> AppMonad a -> (Term, Log)
+runApp env m = do
+  let (_, Env t, log) = runRWS m () env
 
--- focus :: Term -> Eff AllEffs () -> Eff AllEffs ()
--- focus t m = do
---   Env oldT <- get
--- 
---   case locate t oldT of
---     Just (t', cs) -> do
---       let (newT, log) = runApp (Env t') m
--- 
---       put . Env $ goRoot (newT, cs)
---       tell $ map (first (\nt -> goRoot (nt, cs))) log
---     Nothing -> error $ "Could not focus:\n  " <> toUnicode t <> " in\n  " <> toUnicode oldT
+  (t, log)
 
--- runSolution :: Eff '[ Writer Log, State Env] a -> IO ()
--- runSolution m = do
---   let (_, log) = runApp (Env "_") m
---   let usedAxioms = nub (map snd log)
---   printAxioms usedAxioms
---   putStrLn ""
--- 
---   let paddingT = maximum $ map (length . toAscii . fst) log
---   forM_ log $ \(t, axiom) -> do
---     putStr (toAscii t)
---     putStr $ replicate (paddingT - length (toAscii t)) ' '
---     putStrLn $ " ; " <> description axiom
+initial :: Term -> AppMonad ()
+initial t = do
+  tell [(t, axiomIdentity)]
+  put (Env t)
 
--- runProcess t m = do
---   let (_, log) = runApp (Env t) m
---   let usedAxioms = nub (map snd log)
---   printAxioms usedAxioms
---   putStrLn ""
--- 
---   let paddingT = maximum $ map (length . toAscii . fst) log
---   putStrLn . toAscii $ t
---   forM_ log $ \(t, axiom) -> do
---     putStr (toAscii t)
---     putStr $ replicate (paddingT - length (toAscii t)) ' '
---     putStrLn $ " ; " <> description axiom
+focus :: Term -> AppMonad () -> AppMonad ()
+focus t m = do
+  Env oldT <- get
+
+  case locate t oldT of
+    Just (t', cs) -> do
+      let (newT, log) = runApp (Env t') m
+
+      put . Env $ goRoot (newT, cs)
+      tell $ map (first (\nt -> goRoot (nt, cs))) log
+    Nothing -> error $ "Could not focus:\n  " <> toUnicode t <> " in\n  " <> toUnicode oldT
+
+runSolution :: AppMonad a -> IO ()
+runSolution m = do
+  let (_, log) = runApp (Env "_") m
+  let usedAxioms = nub (map snd log)
+  printAxioms usedAxioms
+  putStrLn ""
+
+  let paddingT = maximum $ map (length . toAscii . fst) log
+  forM_ log $ \(t, axiom) -> do
+    putStr (toAscii t)
+    putStr $ replicate (paddingT - length (toAscii t)) ' '
+    putStrLn $ " ; " <> description axiom
 
 --main = body
-main = defaultMain tests
--- main = runSolution solution
+-- main = defaultMain tests
+main = runSolution solution
 --main = putStrLn $ show testF
 
--- solution2 = do
---   initial "a(b + c)"
--- 
---   apply axiomDistribute
---   apply axiomCommuteSum
--- 
--- solution = do
---   initial "lim[h->0]((sin(x+h)-sin(x))/h)"
--- 
---   focus "sin(x+h)" $ apply (axiomSubstitute "sin(a+b)" "sin(a)cos(b) + sin(b)cos(a)")
---   focus "_-sin(x)" $ apply axiomCommuteSum
---   focus "-(sin(x))+_" $ apply axiomAssociateSum
---   focus "-(sin(x))+_" $ apply axiomDistribute
---   focus "_/h" $ apply axiomDistribute
---   focus "lim[h->_](_)" $ apply axiomDistributeLimit
---   focus "(sin(x)*_)/_" $ apply axiomAssociateProduct
---   focus "lim[h->_](sin(x)_)" $ apply (axiomFactor "sin(x)")
---   focus "sin(h)*_" $ apply axiomCommuteProduct
---   focus "(cos(x)*_)/_" $ apply axiomAssociateProduct
---   focus "lim[h->_](cos(x)_)" $ apply (axiomFactor "cos(x)")
---   focus "lim[h->_](sin(h)/_)" $ apply (axiomSubstitute "lim[a->0](sin(a)/a)" "1")
---   focus "-(1)+cos(h)" $ apply axiomCommuteSum
---   focus "lim[h->_]((cos(h)-1)/_)" $ apply (axiomSubstitute "lim[a->0]((cos(a)-1)/a)" "0")
---   focus "sin(x)_" $ apply axiomZeroProduct
---   focus "cos(x)_" $ apply axiomIdentityProduct
+solutionSimple = do
+  initial "a(b + c)"
+
+  apply axiomDistribute
+  apply axiomCommuteSum
+
+solution = do
+  initial "lim[h->0]((sin(x+h)-sin(x))/h)"
+
+  focus "sin(x+h)" $ apply (axiomSubstitute "sin(a+b)" "sin(a)cos(b) + sin(b)cos(a)")
+  focus "_-sin(x)" $ apply axiomCommuteSum
+  focus "-(sin(x))+_" $ apply axiomAssociateSum
+  focus "-(sin(x))" $ apply axiomCommuteProduct
+  focus "_/h" $ apply axiomDistribute
+  focus "lim[h->_](_)" $ apply axiomDistributeLimit
+  focus "(sin(x)*_)/_" $ apply axiomAssociateProduct
+  --focus "lim[h->_](sin(x)_)" $ apply axiomFactorLimit
+  --focus "sin(h)*_" $ apply axiomCommuteProduct
+  --focus "(cos(x)*_)/_" $ apply axiomAssociateProduct
+  --focus "lim[h->_](cos(x)_)" $ apply axiomFactorLimit
+  --focus "lim[h->_](sin(h)/_)" $ apply (axiomSubstitute "lim[a->0](sin(a)/a)" "1")
+  --focus "-(1)+cos(h)" $ apply axiomCommuteSum
+  --focus "lim[h->_]((cos(h)-1)/_)" $ apply (axiomSubstitute "lim[a->0]((cos(a)-1)/a)" "0")
+  --focus "sin(x)_" $ apply axiomZeroProduct
+  --focus "cos(x)_" $ apply axiomIdentityProduct
 
 validate :: (Term -> Term) -> Term -> Term -> TestTree
 validate f input expected =
