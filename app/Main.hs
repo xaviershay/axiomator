@@ -171,7 +171,7 @@ runSolution m = do
 
 --main = body
 -- main = defaultMain tests
-main = runSolution solution
+main = runSolution solutionSimple
 --main = putStrLn $ show testF
 
 solutionSimple = do
