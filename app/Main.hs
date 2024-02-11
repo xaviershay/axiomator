@@ -177,8 +177,7 @@ main = runSolution solutionSimple
 solutionSimple = do
   initial "a(b + c)"
 
-  apply axiomDistribute
-  apply axiomCommuteSum
+  focus "b + c" $ apply axiomCommuteSum
 
 solution = do
   initial "lim[h->0]((sin(x+h)-sin(x))/h)"
