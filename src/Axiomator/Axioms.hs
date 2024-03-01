@@ -222,6 +222,7 @@ axiomSubstitute pattern replacement = Axiom {
     structureMatch (Op2 _ t1l t1r) (Op2 _ t2l t2r) =
       structureMatch t1l t2l && structureMatch t1r t2r
     structureMatch (Var _) _ = True
+    structureMatch Hole _ = True
     structureMatch _ _ = False
 
 locateVars :: Term -> [Zipper]
