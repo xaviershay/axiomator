@@ -11,21 +11,10 @@ import Axiomator.Types
 import Axiomator.Parser
 import Axiomator.Axioms
 import Control.Arrow (first)
-import Control.Monad (mfilter)
-import Data.String (IsString(..))
-import Debug.Trace (trace, traceM)
-import Data.List
-import Data.Hashable
-import GHC.Generics hiding (Infix, Prefix)
-import qualified Data.Tuple
 import qualified Data.HashMap.Strict as M
-import Data.Maybe (catMaybes, isNothing, fromJust)
-import Data.Monoid ((<>))
+import Data.List (nub)
 import Control.Monad (msum, forM_)
 import Control.Monad.RWS.Strict (RWS, tell, put, runRWS, get)
-
-import Test.Tasty
-import Test.Tasty.HUnit
 
 allAxioms =
   [ axiomCommuteSum
@@ -37,31 +26,6 @@ allAxioms =
   , axiomMultiplyConst
   , axiomFactorialConst
   ]
-
-p = parseUnsafe
-ps = putStrLn . toAscii
-
-distribute t (Op2 Product a (Op2 Sum b c)) =
-  let x = cancelTerm t $ Op2 Fraction a t in
-
-  Op2 Product x $
-    Op2 Sum
-      (Op2 Product t b)
-      (Op2 Product t c)
-
-undistribute t (Op2 Sum a b) =
-  Op2 Product t $
-    Op2 Sum
-      (cancelTerm t $ Op2 Fraction a t)
-      (cancelTerm t $ Op2 Fraction b t)
-
-filterZip :: (Term -> Bool) -> Zipper -> [Zipper]
-filterZip f (Hole, _) = []
-filterZip f z@(t, cs) = do
-  let currentNode = if f t then [(t, cs)] else []
-      lhs = filterZip f (goLeft z)
-      rhs = filterZip f (goRight z)
-    in currentNode ++ lhs ++ rhs
 
 locate :: Term -> Term -> Maybe Zipper
 locate needle haystack = locate' needle (haystack, [])
@@ -109,10 +73,6 @@ apply axiom = do
         <> show t'
         <> "\nfull term is: \n  "
         <> show t
-
--- TODO: Handle variable aliasing properly for nested series
-e_to t = (Op2 (Series "k") (Const 0) (Op2 Fraction (Op2 Exponent t (Var "k")) (Op1 Factorial (Var "k"))))
-cos_x = parseUnsafe "S[m=0]((-1)^m*(x^(2*m))/(2*m)!)"
 
 printAxioms axioms = do
   let paddingIndex = length (show $ length axioms)
@@ -165,10 +125,8 @@ runSolution m = do
     putStr $ replicate (paddingT - length (toAscii t)) ' '
     putStrLn $ " ; " <> description axiom
 
---main = body
 -- main = defaultMain tests
 main = runSolution solution
---main = putStrLn $ show testF
 
 solutionSimple = do
   initial "a(b + c)"
@@ -201,38 +159,6 @@ solution = do
   focus "0 + cos(x)" $ apply axiomCommuteSum
   focus "cos(x) + 0" $ apply axiomIdentitySum
 
-validate :: (Term -> Term) -> Term -> Term -> TestTree
-validate f input expected =
-  testCase (toUnicode input <> " = " <> toUnicode expected) $ (toAscii $ f input) @?=(toAscii $ expected)
-
-validateAll :: TestName -> (Term -> Term) -> [(Term, Term)] -> TestTree
-validateAll name f = testGroup name . map (uncurry $ validate f)
-
-tests = testGroup "Axioms"
-  [ validateAll "distribute \"a\"" (simplify . distribute "a") $
-      [ ("a(b+c)", "ab+ac")
-      , ("2a(b+c)", "2(ab+ac)")
-      ]
-  , validateAll "undistribute \"a\"" (simplify . undistribute "a")
-      [ ("ab+ac", "a(b+c)")
-      , ("ba+ac", "a(b+c)")
-      , ("ab+ca", "a(b+c)")
-      , ("ba+ca", "a(b+c)")
-      , ("ab+a", "a(b+1)")
-      , ("ba+a", "a(b+1)")
-      , ("a+ab", "a(1+b)")
-      , ("a+ba", "a(1+b)")
-      , ("b+c", "a*(b/a+c/a)")
-      ]
-    , testGroup "cancelTerm (exponents)"
-      [ validate (simplify . cancelTerm "x^1") "x^2/x^1" "x"
-      , validate (simplify . cancelTerm "x") "x^2/x^1" "x"
-      , validate (simplify . cancelTerm "x") "x^2/x" "x"
-      , validate (simplify . cancelTerm "x") "x/x^1" "1"
-      , validate (simplify . cancelTerm "x") "2x/x" "2"
-      ]
-    , testGroup "random"
-      [ testCase "functions not parsed as products of variables" $
-          Left "sin(x)" @=? (implementation axiomCommuteProduct) "sin(x)"
-      ]
-  ]
+-- TODO: Handle variable aliasing properly for nested series
+e_to t = (Op2 (Series "k") (Const 0) (Op2 Fraction (Op2 Exponent t (Var "k")) (Op1 Factorial (Var "k"))))
+cos_x = parseUnsafe "S[m=0]((-1)^m*(x^(2*m))/(2*m)!)"
