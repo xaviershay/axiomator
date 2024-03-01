@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.36.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 
@@ -25,12 +25,12 @@ source-repository head
 
 library
   exposed-modules:
+      Axiomator
       Axiomator.Axioms
+      Axiomator.Monad
       Axiomator.Parser
       Axiomator.Types
   other-modules:
-      Paths_axiomator
-  autogen-modules:
       Paths_axiomator
   hs-source-dirs:
       src
@@ -52,8 +52,6 @@ library
 executable axiomator-exe
   main-is: Main.hs
   other-modules:
-      Paths_axiomator
-  autogen-modules:
       Paths_axiomator
   hs-source-dirs:
       app
@@ -77,8 +75,6 @@ test-suite axiomator-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_axiomator
-  autogen-modules:
       Paths_axiomator
   hs-source-dirs:
       test
