@@ -83,6 +83,7 @@ tests = testGroup "Axiomator"
       , testApply (axiomSubstitute "x+y" "xy") "a+b" "ab"
       , testApply (axiomSubstitute "x+2" "x+1+1") "a+2" "a+1+1"
       , testApply (axiomSubstitute "x+x" "x*2") "(a+b)+(a+b)" "(a+b)*2"
+      , testApply (axiomSubstitute "x+_" "x*2") "(a+b)+(a+b)" "(a+b)*2"
       , testInvalid (axiomSubstitute "f(x)" "g(x)") "a+f(b)"
       , testInvalid (axiomSubstitute "x+x" "x*2") "(a+b)+(a+c)"
       ]

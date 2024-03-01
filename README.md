@@ -3,7 +3,9 @@
 An experiment in creating a proof-assistant DSL for applying mathematical
 axioms to expressions. The following program:
 
-    solution = do
+    import Axiomator
+
+    main = runSolution $ do
       initial "a(b + c)"
 
       apply axiomDistribute
@@ -23,7 +25,9 @@ summary of all axioms used:
 Sub-expressions can be "focused" on, with `_` able to be used as a placeholder
 to avoid repeating complex formulae:
 
-    solutionSimple = do
+    import Axiomator
+
+    main = runSolution $ do
       initial "a(b + sin(c))"
 
       focus "b + _" $ apply axiomCommuteSum
